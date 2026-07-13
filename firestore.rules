@@ -1,0 +1,179 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getProfileGamertag(uid) {
+      return get(/databases/$(database)/documents/profiles/$(uid)).data.gamertag;
+    }
+
+    // Gamertags collection: enforces unique username mapping (Req 1 & 4)
+    match /gamertags/{gamertag} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false; // Immutable once claimed
+    }
+
+    // Profiles rules (Req 1, 3 & 4)
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      // Profile creation & update requires claiming the gamertag in the gamertags collection first
+      allow create, update: if isOwner(userId) &&
+        exists(/databases/$(database)/documents/gamertags/$(request.resource.data.gamertag)) &&
+        get(/databases/$(database)/documents/gamertags/$(request.resource.data.gamertag)).data.uid == userId;
+      allow delete: if false;
+
+      // Notifications nested subcollection rules
+      match /notifications/{notificationId} {
+        allow read: if isOwner(userId);
+        allow update: if isOwner(userId) && request.resource.data.read == true;
+        allow delete: if false;
+        
+        allow create: if isAuthenticated() && (
+          isOwner(userId) ||
+          (
+            request.resource.data.type == 'team_invite' &&
+            exists(/databases/$(database)/documents/teams/$(request.resource.data.relatedId)) &&
+            get(/databases/$(database)/documents/teams/$(request.resource.data.relatedId)).data.captainId == request.auth.uid
+          ) ||
+          (
+            (request.resource.data.type == 'tournament_starting' || request.resource.data.type == 'match_result') &&
+            exists(/databases/$(database)/documents/tournaments/$(request.resource.data.relatedId)) &&
+            get(/databases/$(database)/documents/tournaments/$(request.resource.data.relatedId)).data.organizerId == request.auth.uid
+          ) ||
+          (
+            request.resource.data.type == 'registration_confirmed' &&
+            request.resource.data.teamId != null &&
+            exists(/databases/$(database)/documents/teams/$(request.resource.data.teamId)) &&
+            get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.captainId == request.auth.uid
+          )
+        );
+      }
+    }
+
+    // Teams rules (Req 4)
+    match /teams/{teamId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.captainId == request.auth.uid;
+      
+      allow update: if isAuthenticated() && (
+        // 1. Captain has full update permission
+        resource.data.captainId == request.auth.uid ||
+        (
+          // 2. Member leaving team (can only remove their own uid from members list)
+          request.resource.data.captainId == resource.data.captainId &&
+          request.resource.data.pendingInvites == resource.data.pendingInvites &&
+          request.resource.data.members.size() == resource.data.members.size() - 1 &&
+          !request.resource.data.members.hasAny([request.auth.uid]) &&
+          resource.data.members.hasAny([request.auth.uid])
+        ) ||
+        (
+          // 3. Invited player accepting invite (can only add their uid to members and remove their gamertag from pendingInvites)
+          request.resource.data.captainId == resource.data.captainId &&
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          request.resource.data.members.hasAll([request.auth.uid]) &&
+          exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+          resource.data.pendingInvites.hasAny([getProfileGamertag(request.auth.uid)]) &&
+          !request.resource.data.pendingInvites.hasAny([getProfileGamertag(request.auth.uid)]) &&
+          request.resource.data.pendingInvites.size() == resource.data.pendingInvites.size() - 1
+        ) ||
+        (
+          // 4. Invited player declining invite (can only remove their gamertag from pendingInvites)
+          request.resource.data.captainId == resource.data.captainId &&
+          request.resource.data.members == resource.data.members &&
+          exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+          resource.data.pendingInvites.hasAny([getProfileGamertag(request.auth.uid)]) &&
+          !request.resource.data.pendingInvites.hasAny([getProfileGamertag(request.auth.uid)]) &&
+          request.resource.data.pendingInvites.size() == resource.data.pendingInvites.size() - 1
+        )
+      );
+      
+      allow delete: if isAuthenticated() && resource.data.captainId == request.auth.uid;
+    }
+
+    // Tournaments rules (Req 2, 5 & 8)
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      
+      allow update: if isAuthenticated() && (
+        // 1. Organizer has full editing rights
+        resource.data.organizerId == request.auth.uid ||
+        (
+          // 2. Teammate registration: only team captain can register their team if Upcoming and slots are available
+          resource.data.status == 'Upcoming' &&
+          request.resource.data.status == 'Upcoming' &&
+          request.resource.data.organizerId == resource.data.organizerId &&
+          request.resource.data.maxTeams == resource.data.maxTeams &&
+          // Verify that registeredTeamIds size does not exceed maxTeams
+          request.resource.data.registeredTeamIds.size() <= resource.data.maxTeams &&
+          // Verify size increased by exactly 1
+          request.resource.data.registeredTeamIds.size() == resource.data.registeredTeamIds.size() + 1 &&
+          request.resource.data.registeredTeamIds.hasAll(resource.data.registeredTeamIds) &&
+          // Verify the added team is referenced in lastRegisteredTeamId
+          request.resource.data.registeredTeamIds.hasAll([request.resource.data.lastRegisteredTeamId]) &&
+          !resource.data.registeredTeamIds.hasAny([request.resource.data.lastRegisteredTeamId]) &&
+          // Verify that the user captains the newly registered team
+          exists(/databases/$(database)/documents/teams/$(request.resource.data.lastRegisteredTeamId)) &&
+          get(/databases/$(database)/documents/teams/$(request.resource.data.lastRegisteredTeamId)).data.captainId == request.auth.uid
+        )
+      );
+      
+      allow delete: if isAuthenticated() && resource.data.organizerId == request.auth.uid;
+
+      // Messages subcollection rules (Live Chat / Shoutbox)
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        
+        allow create: if isAuthenticated() && 
+          // Validate sender parameters
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.senderGamertag == getProfileGamertag(request.auth.uid) &&
+          // Validate text boundaries
+          request.resource.data.text != '' &&
+          request.resource.data.text.size() <= 500 &&
+          request.resource.data.text.matches('.*\\S.*') &&
+          // Validate authorization roles
+          (
+            // Case A: Organizer is posting
+            get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId == request.auth.uid ||
+            (
+              // Case B: Registered participant is posting
+              request.resource.data.teamId != null &&
+              request.resource.data.teamId in get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.registeredTeamIds &&
+              (
+                request.auth.uid in get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.members ||
+                get(/databases/$(database)/documents/teams/$(request.resource.data.teamId)).data.captainId == request.auth.uid
+              )
+            )
+          );
+
+        // Edit is disabled
+        allow update: if false;
+
+        // Deletion allowed only by tournament organizer (moderation)
+        allow delete: if isAuthenticated() && 
+          get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.organizerId == request.auth.uid;
+      }
+    }
+
+    // Match History rules (Bonus Feature)
+    match /matchHistory/{historyId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)) &&
+        get(/databases/$(database)/documents/tournaments/$(request.resource.data.tournamentId)).data.organizerId == request.auth.uid;
+        
+      allow update, delete: if false; // Immutable once recorded
+    }
+  }
+}

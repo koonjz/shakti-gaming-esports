@@ -51,12 +51,11 @@ export default function RegisterClient() {
     setLoading(true);
 
     try {
-      // 1. Check if Gamertag is unique in Firestore profiles (Client check)
-      const profilesRef = collection(db, "profiles");
-      const q = query(profilesRef, where("gamertag", "==", cleanGamertag));
-      const querySnapshot = await getDocs(q);
+      // 1. Check if Gamertag is unique in Firestore using the public /gamertags collection
+      const gamertagDocRef = doc(db, "gamertags", cleanGamertag);
+      const gamertagDocSnap = await getDoc(gamertagDocRef);
       
-      if (!querySnapshot.empty) {
+      if (gamertagDocSnap.exists()) {
         setError('This gamertag is already taken. Please choose another one.');
         triggerShake();
         setLoading(false);
@@ -72,43 +71,23 @@ export default function RegisterClient() {
 
       // 3. Sequential Write: Claim the Gamertag document first
       const claimRef = doc(db, "gamertags", cleanGamertag);
-      console.log("[DIAGNOSTIC] Pre-Gamertag Write Status:", {
-        currentUid: auth.currentUser?.uid,
-        userUid: user.uid,
-        path: `gamertags/${cleanGamertag}`,
-        payload: { uid: user.uid },
-        authStatus: auth.currentUser ? "logged-in" : "null"
-      });
+      const claimSnap = await getDoc(claimRef);
 
-      try {
-        const claimSnap = await getDoc(claimRef);
-        if (claimSnap.exists()) {
-          const existingUid = claimSnap.data()?.uid;
-          console.log("[DIAGNOSTIC] Gamertag document exists:", { existingUid });
-          if (existingUid !== user.uid) {
-            setError('This gamertag is already claimed by another user.');
-            triggerShake();
-            setLoading(false);
-            return;
-          }
-        } else {
-          console.log("[DIAGNOSTIC] Writing gamertag claim doc...");
-          await setDoc(claimRef, { uid: user.uid });
-          console.log("[DIAGNOSTIC] Gamertag claim doc written successfully.");
+      if (claimSnap.exists()) {
+        const existingUid = claimSnap.data()?.uid;
+        if (existingUid !== user.uid) {
+          setError('This gamertag is already claimed by another user.');
+          triggerShake();
+          setLoading(false);
+          return;
         }
-      } catch (err: any) {
-        console.error("[DIAGNOSTIC] Gamertag write failed:", {
-          code: err.code,
-          message: err.message,
-          stack: err.stack,
-          fullError: err
-        });
-        throw err;
+      } else {
+        await setDoc(claimRef, { uid: user.uid });
       }
 
       // 4. Sequential Write: Create the profile document
       const profileRef = doc(db, "profiles", user.uid);
-      const profilePayload = {
+      await setDoc(profileRef, {
         uid: user.uid,
         gamertag: cleanGamertag,
         displayName: displayName.trim(),
@@ -121,30 +100,7 @@ export default function RegisterClient() {
           points: 1000
         },
         createdAt: Date.now()
-      };
-
-      console.log("[DIAGNOSTIC] Pre-Profile Write Status:", {
-        currentUid: auth.currentUser?.uid,
-        userUid: user.uid,
-        path: `profiles/${user.uid}`,
-        payloadGamertag: profilePayload.gamertag,
-        payload: profilePayload,
-        authStatus: auth.currentUser ? "logged-in" : "null"
       });
-
-      try {
-        console.log("[DIAGNOSTIC] Writing profile doc...");
-        await setDoc(profileRef, profilePayload);
-        console.log("[DIAGNOSTIC] Profile doc written successfully.");
-      } catch (err: any) {
-        console.error("[DIAGNOSTIC] Profile write failed:", {
-          code: err.code,
-          message: err.message,
-          stack: err.stack,
-          fullError: err
-        });
-        throw err;
-      }
 
       // Redirect to profile setup
       router.push('/profile');

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Gamepad2, User, Mail, Lock, AlertCircle } from 'lucide-react';
 
@@ -67,13 +67,28 @@ export default function RegisterClient() {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
-      // 3. Create both the gamertag claim and profile document atomically
-      const batch = writeBatch(db);
+      // Force refresh user ID Token to ensure Firestore rules recognize auth immediately
+      await user.getIdToken(true);
+
+      // 3. Sequential Write: Claim the Gamertag document first
       const claimRef = doc(db, "gamertags", cleanGamertag);
-      batch.set(claimRef, { uid: user.uid });
-      
+      const claimSnap = await getDoc(claimRef);
+
+      if (claimSnap.exists()) {
+        const existingUid = claimSnap.data()?.uid;
+        if (existingUid !== user.uid) {
+          setError('This gamertag is already claimed by another user.');
+          triggerShake();
+          setLoading(false);
+          return;
+        }
+      } else {
+        await setDoc(claimRef, { uid: user.uid });
+      }
+
+      // 4. Sequential Write: Create the profile document
       const profileRef = doc(db, "profiles", user.uid);
-      batch.set(profileRef, {
+      await setDoc(profileRef, {
         uid: user.uid,
         gamertag: cleanGamertag,
         displayName: displayName.trim(),
@@ -87,7 +102,6 @@ export default function RegisterClient() {
         },
         createdAt: Date.now()
       });
-      await batch.commit();
 
       // Redirect to profile setup
       router.push('/profile');

@@ -72,23 +72,43 @@ export default function RegisterClient() {
 
       // 3. Sequential Write: Claim the Gamertag document first
       const claimRef = doc(db, "gamertags", cleanGamertag);
-      const claimSnap = await getDoc(claimRef);
+      console.log("[DIAGNOSTIC] Pre-Gamertag Write Status:", {
+        currentUid: auth.currentUser?.uid,
+        userUid: user.uid,
+        path: `gamertags/${cleanGamertag}`,
+        payload: { uid: user.uid },
+        authStatus: auth.currentUser ? "logged-in" : "null"
+      });
 
-      if (claimSnap.exists()) {
-        const existingUid = claimSnap.data()?.uid;
-        if (existingUid !== user.uid) {
-          setError('This gamertag is already claimed by another user.');
-          triggerShake();
-          setLoading(false);
-          return;
+      try {
+        const claimSnap = await getDoc(claimRef);
+        if (claimSnap.exists()) {
+          const existingUid = claimSnap.data()?.uid;
+          console.log("[DIAGNOSTIC] Gamertag document exists:", { existingUid });
+          if (existingUid !== user.uid) {
+            setError('This gamertag is already claimed by another user.');
+            triggerShake();
+            setLoading(false);
+            return;
+          }
+        } else {
+          console.log("[DIAGNOSTIC] Writing gamertag claim doc...");
+          await setDoc(claimRef, { uid: user.uid });
+          console.log("[DIAGNOSTIC] Gamertag claim doc written successfully.");
         }
-      } else {
-        await setDoc(claimRef, { uid: user.uid });
+      } catch (err: any) {
+        console.error("[DIAGNOSTIC] Gamertag write failed:", {
+          code: err.code,
+          message: err.message,
+          stack: err.stack,
+          fullError: err
+        });
+        throw err;
       }
 
       // 4. Sequential Write: Create the profile document
       const profileRef = doc(db, "profiles", user.uid);
-      await setDoc(profileRef, {
+      const profilePayload = {
         uid: user.uid,
         gamertag: cleanGamertag,
         displayName: displayName.trim(),
@@ -101,7 +121,30 @@ export default function RegisterClient() {
           points: 1000
         },
         createdAt: Date.now()
+      };
+
+      console.log("[DIAGNOSTIC] Pre-Profile Write Status:", {
+        currentUid: auth.currentUser?.uid,
+        userUid: user.uid,
+        path: `profiles/${user.uid}`,
+        payloadGamertag: profilePayload.gamertag,
+        payload: profilePayload,
+        authStatus: auth.currentUser ? "logged-in" : "null"
       });
+
+      try {
+        console.log("[DIAGNOSTIC] Writing profile doc...");
+        await setDoc(profileRef, profilePayload);
+        console.log("[DIAGNOSTIC] Profile doc written successfully.");
+      } catch (err: any) {
+        console.error("[DIAGNOSTIC] Profile write failed:", {
+          code: err.code,
+          message: err.message,
+          stack: err.stack,
+          fullError: err
+        });
+        throw err;
+      }
 
       // Redirect to profile setup
       router.push('/profile');

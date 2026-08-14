@@ -28,20 +28,31 @@ export default function RootLayout({
                 {children}
               </main>
               <GlobalChatWidget />
-              <footer style={{
-                background: 'var(--bg-secondary)',
-                borderTop: '1px solid rgba(0, 240, 255, 0.15)',
-                padding: '2.5rem 0',
-                textAlign: 'center',
-                color: 'var(--text-muted)',
-                fontSize: '0.9rem',
-                flexShrink: 0
-              }}>
+              <footer className="esports-footer" style={{ flexShrink: 0 }}>
                 <div className="container">
-                  <p>&copy; {new Date().getFullYear()} <span style={{ color: 'var(--neon-blue)', fontWeight: 800 }}>SHAKT</span><span style={{ color: 'var(--neon-purple)', fontWeight: 800 }}>RIX</span> Esports. All rights reserved.</p>
-                  <p style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: 'hsla(217, 12%, 50%, 0.7)' }}>
-                    Tournament brackets & Live Leaderboards synced in real-time.
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '2rem', marginBottom: '2rem' }}>
+                    {/* Brand */}
+                    <div>
+                      <div className="footer-brand">
+                        SHAKT<span className="accent">RIX</span>
+                      </div>
+                      <div className="footer-tagline">India&apos;s competitive esports platform</div>
+                    </div>
+
+                    {/* Nav links */}
+                    <ul className="footer-links">
+                      <li><a href="/tournaments">Tournaments</a></li>
+                      <li><a href="/teams">Teams</a></li>
+                      <li><a href="/leaderboard">Leaderboard</a></li>
+                      <li><a href="/players">Players</a></li>
+                      <li><a href="/about">About</a></li>
+                    </ul>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <span className="footer-copy">&copy; {new Date().getFullYear()} SHAKTRIX Esports. All rights reserved.</span>
+                    <span className="footer-copy">Tournament brackets &amp; Live Leaderboards synced in real-time.</span>
+                  </div>
                 </div>
               </footer>
             </div>

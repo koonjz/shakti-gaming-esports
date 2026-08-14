@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { tournamentService, Tournament } from '@/services/tournamentService';
 import { useAppStore } from '@/store/useAppStore';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
-import { Trophy, Gamepad2, Users, Flame, ChevronRight, Activity, Radio, Zap, ArrowDownRight, Sparkles } from 'lucide-react';
+import { Trophy, Gamepad2, Users, Flame, ChevronRight, Activity, Radio, Zap, ArrowDownRight, Sparkles, Shield, Star } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import GlassCard from '@/components/ui/GlassCard';
@@ -19,31 +19,67 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
 
+const HOME_GAME_COLORS: Record<string, string> = {
+  valorant:        'linear-gradient(90deg, #FF4655, #BD3744)',
+  'league of legends': 'linear-gradient(90deg, #C89B3C, #785A28)',
+  'cs:go':         'linear-gradient(90deg, #F4960B, #B36B00)',
+  'apex legends':  'linear-gradient(90deg, #CD3333, #7D1F1F)',
+  'rocket league': 'linear-gradient(90deg, #00A3FF, #0055AA)',
+  'overwatch 2':   'linear-gradient(90deg, #F99E1A, #E67E22)',
+};
+
 function HomeTournamentCard({ tournament: t }: { tournament: Tournament }) {
   const effStatus = useEffectiveTournamentStatus(t);
+  const registeredCount = t.registeredTeamIds?.length || 0;
+  const fillPct = Math.min(100, (registeredCount / Math.max(t.maxTeams, 1)) * 100);
+  const isFull = registeredCount >= t.maxTeams;
+  const accent = HOME_GAME_COLORS[t.game.toLowerCase()] ?? 'linear-gradient(90deg, var(--accent-cyan), var(--accent-violet))';
 
   return (
-    <GlassCard key={t.id} variant="panel" style={{ padding: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <Badge variant={effStatus === 'Active' ? 'live' : effStatus === 'Upcoming' ? 'cyan' : 'gold'}>
-          {effStatus === 'Active' ? 'Live' : effStatus}
-        </Badge>
-        <Badge variant="cyan" style={{ fontSize: '0.75rem', textTransform: 'none' }}>{t.game}</Badge>
+    <article className="tournament-card-pro">
+      {/* Game-colored accent bar */}
+      <div className="tournament-card-accent" style={{ background: accent }} />
+
+      <div className="tournament-card-body">
+        {/* Status + game badges */}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <Badge variant={effStatus === 'Active' ? 'live' : effStatus === 'Upcoming' ? 'cyan' : 'gold'}>
+            {effStatus === 'Active' ? 'Live' : effStatus}
+          </Badge>
+          <Badge variant="cyan" style={{ fontSize: '0.72rem' }}>{t.game}</Badge>
+        </div>
+
+        <h3 className="tournament-card-title">{t.name}</h3>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <TournamentCountdown tournament={t} compact={true} />
+        </div>
+
+        {/* Slot progress bar */}
+        <div className="tournament-card-slots">
+          <div className="slots-bar-track">
+            <div
+              className="slots-bar-fill"
+              style={{
+                width: `${fillPct}%`,
+                background: isFull ? 'linear-gradient(90deg, var(--accent-red), #CC0044)' : accent,
+              }}
+            />
+          </div>
+          <span className="slots-text" style={{ color: isFull ? 'var(--accent-red)' : undefined }}>
+            {registeredCount}/{t.maxTeams}{isFull ? ' FULL' : ''}
+          </span>
+        </div>
       </div>
-      <h3 style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>{t.name}</h3>
-      <div style={{ marginBottom: '1rem' }}>
-        <TournamentCountdown tournament={t} compact={true} />
+
+      <div className="tournament-card-cta">
+        <Link href={`/tournaments/${t.id}`}>
+          <Button variant={effStatus === 'Active' ? 'primary' : 'outline'}>
+            {effStatus === 'Active' ? 'Spectate Bracket' : effStatus === 'Completed' ? 'View Results' : 'View Details'}
+          </Button>
+        </Link>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem' }}>
-        <span>Rosters Registered</span>
-        <strong style={{ color: 'var(--text-primary)' }}>{t.registeredTeamIds?.length || 0} / {t.maxTeams}</strong>
-      </div>
-      <Link href={`/tournaments/${t.id}`}>
-        <Button variant="outline" style={{ width: '100%', marginTop: '1.5rem', justifyContent: 'center' }}>
-          {effStatus === 'Active' ? 'Spectate Bracket' : effStatus === 'Completed' ? 'View Results' : 'View Tournament Details'}
-        </Button>
-      </Link>
-    </GlassCard>
+    </article>
   );
 }
 
@@ -211,6 +247,7 @@ export default function HomeView() {
         }}
       >
         <div className="ambient-glow-cyan" style={{ top: '15%', left: '20%', opacity: 0.3 }} />
+
         <div className="ambient-glow-violet" style={{ bottom: '15%', right: '20%', opacity: 0.3 }} />
 
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '900px', margin: '0 auto' }}>

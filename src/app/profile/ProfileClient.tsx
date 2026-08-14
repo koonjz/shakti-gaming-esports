@@ -268,6 +268,28 @@ export default function ProfileClient() {
   const upcomingTournaments = tournamentHistory.filter(t => t.status !== 'Completed');
   const pastTournaments = tournamentHistory.filter(t => t.status === 'Completed');
 
+  // Read-only info field styles
+  const infoFieldStyle: React.CSSProperties = {
+    background: 'var(--bg-secondary)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '10px',
+    padding: '1rem 1.25rem',
+  };
+  const infoLabelStyle: React.CSSProperties = {
+    fontSize: '0.68rem',
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.1em',
+    color: 'var(--text-muted)',
+    marginBottom: '0.35rem',
+  };
+  const infoValueStyle: React.CSSProperties = {
+    fontSize: '0.95rem',
+    fontWeight: 700,
+    color: 'var(--text-primary)',
+    wordBreak: 'break-word' as const,
+  };
+
   return (
     <main style={{ position: 'relative', minHeight: 'calc(100vh - 4.5rem)', padding: '7.5rem 1.5rem 4rem 1.5rem' }}>
       <div className="hero-glow hero-glow-1" />
@@ -358,131 +380,131 @@ export default function ProfileClient() {
         {/* SECTION 1: PERSONAL INFORMATION (Riot ID taken here) */}
         {/* ────────────────────────────────────────────────────────── */}
         {activeSection === 'personal' && (
-          <form onSubmit={handleSaveProfile} className={`glass-panel fade-in ${shake ? 'shake' : ''}`} style={{ padding: '2.5rem' }}>
+          <div className="glass-panel fade-in" style={{ padding: '2.5rem' }}>
+            {/* Section heading */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
               <User size={20} style={{ color: 'var(--accent-cyan)' }} />
-              <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Personal Information Settings</h2>
-            </div>
-
-            {/* Riot Games ID (Necessarily Taken Here) */}
-            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-              <label htmlFor="prof-riotid" className="form-label" style={{ fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
-                <Gamepad2 size={16} style={{ color: 'var(--accent-cyan)' }} />
-                Linked Riot Games ID <span style={{ color: 'var(--accent-red)' }}>*Required for stats sync</span>
-              </label>
-              <div className="input-glow-wrapper">
-                <input
-                  id="prof-riotid"
-                  type="text"
-                  className="glass-input"
-                  placeholder="e.g. Rioter#NA1"
-                  value={riotId}
-                  onChange={(e) => setRiotId(e.target.value)}
-                  disabled={updating}
-                  style={{ height: '3rem' }}
-                />
-              </div>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.4rem', lineHeight: 1.4 }}>
-                Enter your global Riot ID (Format: Username#Tagline). Once linked, your profile will pull live statistics which will be used for seeding match brackets.
+              <h2 style={{ fontSize: '1.4rem', margin: 0 }}>Personal Information</h2>
+              <span style={{ marginLeft: 'auto', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0.2rem 0.7rem', border: '1px solid var(--border-color)', borderRadius: '9999px' }}>
+                View Only
               </span>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-              <label htmlFor="prof-name" className="form-label" style={{ fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                Display Name
-              </label>
-              <div className="input-glow-wrapper">
-                <input
-                  id="prof-name"
-                  type="text"
-                  className="glass-input"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  disabled={updating}
-                  style={{ height: '3rem' }}
-                />
-              </div>
-            </div>
+            {/* Info grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
 
-            <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-              <label className="form-label" style={{ fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                Registered Games
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {AVAILABLE_GAMES.map((game) => {
-                  const isSelected = selectedGames.includes(game);
-                  return (
-                    <button
-                      key={game}
-                      type="button"
-                      onClick={() => handleGameToggle(game)}
-                      disabled={updating}
-                      className={`badge ${isSelected ? 'badge-cyan' : 'badge-outline'}`}
-                      style={{ padding: '0.4rem 0.85rem', cursor: 'pointer', border: '1px solid var(--border-color)', fontSize: '0.8rem' }}
-                    >
-                      {isSelected && <Check size={12} style={{ marginRight: '0.25rem', display: 'inline' }} />}
-                      {game}
-                    </button>
-                  );
-                })}
+              {/* Display Name */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Display Name</div>
+                <div style={infoValueStyle}>{profile.displayName || '—'}</div>
               </div>
-            </div>
 
-            <div className="form-group" style={{ marginBottom: '2rem' }}>
-              <label className="form-label" style={{ fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-                Preferred Roles
-              </label>
-              
-              {preferredRoles.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.8rem' }}>
-                  {preferredRoles.map((role) => (
-                    <span
-                      key={role}
-                      className="badge badge-violet"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.78rem' }}
-                    >
-                      {role}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRole(role)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0 0.1rem', fontSize: '0.7rem' }}
-                      >
-                        &times;
-                      </button>
-                    </span>
-                  ))}
+              {/* Gamertag */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Gamertag / Handle</div>
+                <div style={{ ...infoValueStyle, color: 'var(--accent-cyan)' }}>@{profile.gamertag || '—'}</div>
+              </div>
+
+              {/* Email */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Email Address</div>
+                <div style={infoValueStyle}>{user?.email || '—'}</div>
+              </div>
+
+              {/* Member since */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Member Since</div>
+                <div style={infoValueStyle}>
+                  {user?.metadata?.creationTime
+                    ? new Date(user.metadata.creationTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : '—'}
                 </div>
-              )}
+              </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {POPULAR_ROLES.filter(r => !preferredRoles.includes(r)).map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => handleAddRole(role)}
-                    disabled={updating}
-                    className="badge badge-outline table-row-hover"
-                    style={{ padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
-                  >
-                    <Plus size={12} /> {role}
-                  </button>
-                ))}
+              {/* Date of Birth */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Date of Birth</div>
+                <div style={infoValueStyle}>
+                  {(profile as any).dob
+                    ? new Date((profile as any).dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+                    : <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 500 }}>Not provided</span>}
+                </div>
+              </div>
+
+              {/* Skill Level */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Skill Level</div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.35rem 0.85rem', borderRadius: '9999px',
+                    fontFamily: 'var(--font-title)', fontSize: '0.78rem', fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.06em',
+                    background: profile.skillLevel === 'Advanced' ? 'rgba(255,42,109,0.14)' : profile.skillLevel === 'Intermediate' ? 'rgba(0,240,255,0.14)' : 'rgba(0,255,136,0.12)',
+                    border: `1px solid ${profile.skillLevel === 'Advanced' ? 'var(--accent-red)' : profile.skillLevel === 'Intermediate' ? 'var(--accent-cyan)' : 'var(--accent-green)'}`,
+                    color: profile.skillLevel === 'Advanced' ? 'var(--accent-red)' : profile.skillLevel === 'Intermediate' ? 'var(--accent-cyan)' : 'var(--accent-green)',
+                  }}>
+                    {profile.skillLevel === 'Advanced' ? '🔥' : profile.skillLevel === 'Intermediate' ? '⚡' : '🌱'} {profile.skillLevel || 'Intermediate'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Linked Riot ID */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Linked Riot ID</div>
+                <div style={infoValueStyle}>
+                  {profile.riotId
+                    ? <span style={{ color: 'var(--accent-violet)' }}>{profile.riotId}</span>
+                    : <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 500 }}>Not linked — see VALORANT Details tab</span>}
+                </div>
+              </div>
+
+              {/* Last Login */}
+              <div style={infoFieldStyle}>
+                <div style={infoLabelStyle}>Last Login</div>
+                <div style={infoValueStyle}>
+                  {user?.metadata?.lastSignInTime
+                    ? new Date(user.metadata.lastSignInTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '—'}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Registered Games */}
+            <div style={{ marginTop: '2rem' }}>
+              <div style={infoLabelStyle}>Registered Games</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.65rem' }}>
+                {(profile.registeredGames || []).length > 0
+                  ? (profile.registeredGames as string[]).map((game) => (
+                    <span key={game} style={{ padding: '0.35rem 0.85rem', borderRadius: '9999px', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-title)', textTransform: 'uppercase', letterSpacing: '0.05em', background: 'rgba(0,240,255,0.1)', border: '1px solid rgba(0,240,255,0.3)', color: 'var(--accent-cyan)' }}>{game}</span>
+                  ))
+                  : <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No games registered</span>}
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%', height: '3rem', fontSize: '0.9rem' }}
-              disabled={updating}
-            >
-              {updating ? 'Saving Changes...' : (
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-                  <Save size={18} /> Save Settings
-                </span>
-              )}
-            </button>
-          </form>
+            {/* Preferred Roles */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={infoLabelStyle}>Preferred Roles</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.65rem' }}>
+                {(profile.preferredRoles || []).length > 0
+                  ? (profile.preferredRoles as string[]).map((role) => (
+                    <span key={role} style={{ padding: '0.35rem 0.85rem', borderRadius: '9999px', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-title)', textTransform: 'uppercase', letterSpacing: '0.05em', background: 'rgba(176,38,255,0.12)', border: '1px solid rgba(176,38,255,0.3)', color: 'var(--accent-violet)' }}>{role}</span>
+                  ))
+                  : <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No roles set</span>}
+              </div>
+            </div>
+
+            {/* Lock notice */}
+            <div style={{ marginTop: '2rem', padding: '0.9rem 1.25rem', borderRadius: '10px', background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.15)', display: 'flex', alignItems: 'flex-start', gap: '0.65rem', fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              <CheckCircle size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0, marginTop: '0.05rem' }} />
+              <span>
+                Personal information is <strong style={{ color: 'var(--text-primary)' }}>read-only</strong> and set at registration.
+                To update games or roles, contact a SHAKTRIX admin.
+                Your Riot ID can be linked from the <strong style={{ color: 'var(--accent-cyan)' }}>VALORANT Details</strong> tab.
+              </span>
+            </div>
+          </div>
         )}
 
         {/* ────────────────────────────────────────────────────────── */}

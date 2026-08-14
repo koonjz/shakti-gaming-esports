@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { 
@@ -23,7 +23,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAppStore, Team } from '@/store/useAppStore';
-import { Trophy, Calendar, Shield, Users, Layers, Award, Loader, AlertCircle, Edit3, Save, Play, Check, X, MessageSquare, Send, Trash2, Bell, Clock, ShieldAlert, CheckCircle, Flame } from 'lucide-react';
+import { isAdmin } from '@/lib/adminConfig';
+import { Trophy, Calendar, Shield, Users, Layers, Award, Loader, AlertCircle, Edit3, Save, Play, Check, X, MessageSquare, Send, Trash2, Bell, Clock, ShieldAlert, CheckCircle, Flame, RefreshCw, GripVertical, ChevronUp, ChevronDown, Settings } from 'lucide-react';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import { TournamentCountdown } from '@/components/TournamentCountdown';
@@ -72,6 +73,7 @@ interface Tournament {
   estimatedEndTime?: number;
   discordWebhookUrl?: string;
   discordBotEnabled?: boolean;
+  minRiotScore?: number;
 }
 
 interface ChatMessage {
@@ -88,6 +90,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
   const team = useAppStore((state) => state.team);
   const profile = useAppStore((state) => state.profile);
   const [mounted, setMounted] = useState(false);
+  const userIsAdmin = isAdmin(user?.email);
 
   useEffect(() => {
     setMounted(true);
@@ -102,6 +105,13 @@ export default function TournamentDetailClient({ id }: { id: string }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Admin bracket management states
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [seedOrder, setSeedOrder] = useState<string[]>([]);
+  const [seedScores, setSeedScores] = useState<Record<string, number>>({}); // teamId -> avg Riot Score
+  const [seedScoresLoading, setSeedScoresLoading] = useState(false);
+  const [useCustomOrder, setUseCustomOrder] = useState(false);
 
   // Discord integration status
   const [discordEnabled, setDiscordEnabled] = useState(false);
@@ -197,8 +207,14 @@ export default function TournamentDetailClient({ id }: { id: string }) {
   }, [tournament]);
 
   const isOrganizer = tournament?.organizerId === user?.uid;
+  // Admin = platform admin OR organizer for elevated bracket controls
+  const isBracketAdmin = userIsAdmin || isOrganizer;
   const isParticipant = team && tournament?.registeredTeamIds?.includes(team.id);
-  const isChatEligible = user && (isOrganizer || isParticipant);
+  const isChatEligible = user && (isOrganizer || isParticipant || userIsAdmin);
+
+  // ✅ FIX: useEffectiveTournamentStatus must be called HERE (before any early returns)
+  // React Error #310 was caused by this hook being called after conditional returns.
+  const effectiveStatus = useEffectiveTournamentStatus(tournament);
 
   // Auto scroll chat to bottom when messages list updates
   const scrollToBottom = (force = false) => {
@@ -327,6 +343,24 @@ export default function TournamentDetailClient({ id }: { id: string }) {
     if (tournament.registeredTeamIds.length >= tournament.maxTeams) {
       setError("This tournament has reached its maximum roster capacity.");
       return;
+    }
+
+    // ── Minimum Riot Score gate ──────────────────────────────────────
+    if (tournament.minRiotScore && tournament.minRiotScore > 0) {
+      setActionLoading(true);
+      try {
+        const teamAvgScore = await tournamentService._computeTeamAvgRiotScore(team.id);
+        if (teamAvgScore < tournament.minRiotScore) {
+          setError(`Registration REJECTED: Your team's average Riot Score is ${teamAvgScore.toLocaleString()} pts, but this tournament requires a minimum of ${tournament.minRiotScore.toLocaleString()} pts. Improve your team's Riot rankings to qualify.`);
+          setActionLoading(false);
+          return;
+        }
+      } catch {
+        setError('Could not verify team Riot Score. Please try again.');
+        setActionLoading(false);
+        return;
+      }
+      setActionLoading(false);
     }
 
     setActionLoading(true);
@@ -905,24 +939,108 @@ export default function TournamentDetailClient({ id }: { id: string }) {
     }
   };
 
-  // Generate Brackets and Start Tournament (Organizer only)
+  // Generate Brackets and Start Tournament (Organizer / Admin only)
   const handleStartTournament = async () => {
     clearMessages();
     if (!tournament) return;
 
-    if (tournament.registeredTeamIds.length < 2) {
-      setError("At least 2 teams must register before generating brackets.");
+    if (tournament.registeredTeamIds.length < 1) {
+      setError("At least 1 team must register before generating brackets.");
       return;
     }
 
     setActionLoading(true);
-
     try {
       await tournamentService.generateBracket(tournament.id, tournament.registeredTeamIds);
-      setSuccess("Brackets generated! Tournament is now Live.");
+      setSuccess("Brackets generated! Tournament is now Live. (Seeded by avg Riot Score)");
     } catch (err: any) {
       console.error("Error starting tournament:", err);
       setError(err.message || "Failed to start tournament brackets.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Admin: Load seed scores for all registered teams
+  const handleLoadSeedScores = async () => {
+    if (!tournament) return;
+    setSeedScoresLoading(true);
+    try {
+      const scores: Record<string, number> = {};
+      for (const tId of tournament.registeredTeamIds) {
+        scores[tId] = await tournamentService._computeTeamAvgRiotScore(tId);
+      }
+      setSeedScores(scores);
+      // Initialize seed order by descending Riot Score (auto-order)
+      const sorted = [...tournament.registeredTeamIds].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
+      setSeedOrder(sorted);
+    } catch (err) {
+      console.error("Failed to load seed scores:", err);
+      setError("Failed to load Riot Score data for seeding.");
+    } finally {
+      setSeedScoresLoading(false);
+    }
+  };
+
+  // Admin: Move a team up in seed order
+  const handleMoveSeedUp = (idx: number) => {
+    if (idx === 0) return;
+    const next = [...seedOrder];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    setSeedOrder(next);
+    setUseCustomOrder(true);
+  };
+
+  // Admin: Move a team down in seed order
+  const handleMoveSeedDown = (idx: number) => {
+    if (idx === seedOrder.length - 1) return;
+    const next = [...seedOrder];
+    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    setSeedOrder(next);
+    setUseCustomOrder(true);
+  };
+
+  // Admin: Reset bracket (wipe all matches, revert to Upcoming)
+  const handleResetBracket = async () => {
+    if (!tournament) return;
+    if (!window.confirm('⚠️ ADMIN ACTION: This will DELETE all matches and reset the tournament to Upcoming. Are you sure?')) return;
+    clearMessages();
+    setActionLoading(true);
+    try {
+      await tournamentService.resetBracket(tournament.id);
+      setSuccess('Bracket reset successfully. Tournament is now Upcoming.');
+      setShowAdminPanel(false);
+      setSeedOrder([]);
+      setSeedScores({});
+    } catch (err: any) {
+      console.error('Failed to reset bracket:', err);
+      setError(err.message || 'Failed to reset bracket.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Admin: Generate bracket with current seed order (custom or auto)
+  const handleGenerateWithSeedOrder = async () => {
+    if (!tournament || seedOrder.length < 2) {
+      setError('Load seed scores first and ensure at least 2 teams are registered.');
+      return;
+    }
+    if (!window.confirm(`Generate bracket with ${useCustomOrder ? 'CUSTOM' : 'AUTO Riot Score'} seed order? This will start the tournament.`)) return;
+    clearMessages();
+    setActionLoading(true);
+    try {
+      if (useCustomOrder) {
+        await tournamentService.regenerateBracketWithCustomOrder(tournament.id, seedOrder);
+        setSuccess('Bracket generated with custom seed order! Tournament is now Live.');
+      } else {
+        await tournamentService.generateBracket(tournament.id, seedOrder);
+        setSuccess('Bracket generated with Riot Score seeding! Tournament is now Live.');
+      }
+      setShowAdminPanel(false);
+    } catch (err: any) {
+      console.error('Failed to generate bracket:', err);
+      setError(err.message || 'Failed to generate bracket.');
     } finally {
       setActionLoading(false);
     }
@@ -1268,7 +1386,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
   }
 
   const isRegistered = team && tournament.registeredTeamIds.includes(team.id);
-  const effectiveStatus = useEffectiveTournamentStatus(tournament);
+  // effectiveStatus is already computed at the top of the component (before any early returns) to fix React Error #310
 
   const matchesByRound: Record<number, Match[]> = {};
   if (tournament.bracket?.matches) {
@@ -1280,7 +1398,8 @@ export default function TournamentDetailClient({ id }: { id: string }) {
     });
   }
 
-  const roundsCount = Math.log2(tournament.maxTeams);
+  // FIX: Use Math.ceil(Math.log2(...)) to always get an integer round count
+  const roundsCount = Math.max(1, Math.ceil(Math.log2(Math.max(tournament.maxTeams, 2))));
   const roundsArray = Array.from({ length: roundsCount }, (_, i) => i + 1);
 
   return (
@@ -1329,6 +1448,13 @@ export default function TournamentDetailClient({ id }: { id: string }) {
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 Bracket capacity: <strong>{tournament.registeredTeamIds.length} / {tournament.maxTeams}</strong> rosters registered.
               </p>
+              {tournament.minRiotScore && tournament.minRiotScore > 0 && (
+                <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', marginTop: '0.4rem' }}>
+                  <span style={{ padding: '0.2rem 0.65rem', borderRadius: '9999px', background: 'rgba(255, 200, 0, 0.12)', border: '1px solid rgba(255, 200, 0, 0.35)', color: 'var(--accent-gold)', fontFamily: 'var(--font-title)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    ⚡ Min Riot Score: {tournament.minRiotScore.toLocaleString()} pts required
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Registration / Start / Broadcast / Share Actions */}
@@ -1359,7 +1485,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
                       <button 
                         onClick={handleStartTournament}
                         className="btn btn-primary"
-                        disabled={actionLoading || tournament.registeredTeamIds.length < 2}
+                        disabled={actionLoading || tournament.registeredTeamIds.length < 1}
                         style={{ background: 'linear-gradient(135deg, var(--accent-violet) 0%, hsl(280, 80%, 55%) 100%)', boxShadow: 'var(--glow-violet)' }}
                       >
                         <Play size={16} /> Generate Bracket & Start
@@ -1382,7 +1508,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
               </div>
 
               {/* Organizer Broadcast Notification Action */}
-              {isOrganizer && tournament.registeredTeamIds.length > 0 && (
+              {isBracketAdmin && tournament.registeredTeamIds.length > 0 && (
                 <button
                   onClick={handleBroadcastNotification}
                   className="btn btn-outline"
@@ -1390,6 +1516,27 @@ export default function TournamentDetailClient({ id }: { id: string }) {
                   style={{ fontSize: '0.85rem', padding: '0.4rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 >
                   <Bell size={14} style={{ color: 'var(--accent-cyan)' }} /> Notify All Registered Players
+                </button>
+              )}
+
+              {/* Admin Panel Toggle */}
+              {isBracketAdmin && (
+                <button
+                  onClick={() => setShowAdminPanel(v => !v)}
+                  className="btn btn-outline"
+                  disabled={actionLoading}
+                  style={{
+                    fontSize: '0.82rem',
+                    padding: '0.4rem 0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    borderColor: showAdminPanel ? 'var(--accent-violet)' : 'var(--border-color)',
+                    color: showAdminPanel ? 'var(--accent-violet)' : 'var(--text-secondary)',
+                    background: showAdminPanel ? 'hsla(280,80%,55%,0.08)' : 'transparent'
+                  }}
+                >
+                  <Settings size={14} /> {showAdminPanel ? 'Hide' : 'Show'} Admin Controls
                 </button>
               )}
             </div>
@@ -1431,6 +1578,227 @@ export default function TournamentDetailClient({ id }: { id: string }) {
           })()}
         </div>
 
+        {/* ============================
+            ADMIN BRACKET MANAGEMENT PANEL
+            ============================ */}
+        {isBracketAdmin && showAdminPanel && (
+          <div
+            className="glass-panel"
+            style={{
+              marginBottom: '1.5rem',
+              padding: '1.75rem',
+              border: '1px solid hsla(280, 80%, 55%, 0.35)',
+              background: 'hsla(280, 80%, 10%, 0.18)',
+              boxShadow: '0 0 30px hsla(280, 80%, 55%, 0.06)'
+            }}
+          >
+            {/* Panel Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-violet)', margin: 0 }}>
+                <Settings size={18} /> Admin Bracket Controls
+                {userIsAdmin && (
+                  <span style={{ fontSize: '0.65rem', background: 'hsla(280,80%,55%,0.2)', border: '1px solid var(--accent-violet)', borderRadius: '4px', padding: '0.1rem 0.4rem', fontWeight: 700, verticalAlign: 'middle' }}>PLATFORM ADMIN</span>
+                )}
+              </h3>
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                {/* Reset Bracket */}
+                <button
+                  onClick={handleResetBracket}
+                  className="btn btn-outline"
+                  disabled={actionLoading || tournament.status === 'Upcoming'}
+                  style={{
+                    fontSize: '0.8rem', padding: '0.45rem 0.9rem',
+                    borderColor: 'var(--accent-red)', color: 'var(--accent-red)',
+                    display: 'flex', alignItems: 'center', gap: '0.35rem'
+                  }}
+                  title="Deletes all matches and resets tournament to Upcoming"
+                >
+                  <RefreshCw size={13} /> Reset Bracket
+                </button>
+              </div>
+            </div>
+
+            {/* Seed Order Editor */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  📊 Team Seed Order (by Avg Riot Score) — drag teams up/down to set custom seeding before generating the bracket.
+                </p>
+                <button
+                  onClick={handleLoadSeedScores}
+                  className="btn btn-outline"
+                  disabled={seedScoresLoading || actionLoading || tournament.registeredTeamIds.length < 2}
+                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+                >
+                  {seedScoresLoading ? <Loader size={13} className="animate-spin" /> : <Shield size={13} />}
+                  {seedScoresLoading ? 'Loading Scores...' : 'Load Riot Scores'}
+                </button>
+              </div>
+
+              {/* Seed list */}
+              {seedOrder.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {seedOrder.map((tId, idx) => (
+                    <div
+                      key={tId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        background: idx === 0
+                          ? 'hsla(51, 100%, 50%, 0.06)'
+                          : idx === 1
+                          ? 'hsla(186, 100%, 48%, 0.05)'
+                          : 'hsla(0, 0%, 100%, 0.02)',
+                        border: `1px solid ${
+                          idx === 0 ? 'hsla(51,100%,50%,0.25)'
+                          : idx === 1 ? 'hsla(186,100%,48%,0.2)'
+                          : 'var(--border-color)'
+                        }`,
+                        borderRadius: '8px',
+                        padding: '0.5rem 0.75rem'
+                      }}
+                    >
+                      {/* Seed Badge */}
+                      <span style={{
+                        minWidth: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 800,
+                        fontSize: '0.75rem',
+                        background: idx === 0
+                          ? 'hsla(51, 100%, 50%, 0.2)'
+                          : idx === 1
+                          ? 'hsla(186, 100%, 48%, 0.15)'
+                          : 'var(--bg-secondary)',
+                        color: idx === 0 ? 'var(--accent-gold)' : idx === 1 ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                        border: '1px solid currentColor'
+                      }}>
+                        #{idx + 1}
+                      </span>
+
+                      {/* Team name */}
+                      <span style={{ flex: 1, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        {teamsMap[tId] || tId}
+                      </span>
+
+                      {/* Riot Score badge */}
+                      {seedScores[tId] !== undefined && (
+                        <span style={{
+                          fontSize: '0.75rem',
+                          background: 'hsla(186, 100%, 48%, 0.08)',
+                          border: '1px solid hsla(186, 100%, 48%, 0.2)',
+                          borderRadius: '6px',
+                          padding: '0.2rem 0.5rem',
+                          color: 'var(--accent-cyan)',
+                          fontFamily: 'monospace',
+                          fontWeight: 700
+                        }}>
+                          ⚡ {seedScores[tId].toLocaleString()} RS
+                        </span>
+                      )}
+
+                      {/* Up/Down controls */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                        <button
+                          onClick={() => handleMoveSeedUp(idx)}
+                          disabled={idx === 0 || actionLoading}
+                          style={{
+                            background: 'none', border: '1px solid var(--border-color)',
+                            color: idx === 0 ? 'var(--text-muted)' : 'var(--accent-violet)',
+                            borderRadius: '4px', padding: '0.1rem 0.25rem', cursor: idx === 0 ? 'not-allowed' : 'pointer',
+                            opacity: idx === 0 ? 0.3 : 1, lineHeight: 1
+                          }}
+                          title="Move up (higher seed)"
+                          aria-label="Move team up in seed order"
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleMoveSeedDown(idx)}
+                          disabled={idx === seedOrder.length - 1 || actionLoading}
+                          style={{
+                            background: 'none', border: '1px solid var(--border-color)',
+                            color: idx === seedOrder.length - 1 ? 'var(--text-muted)' : 'var(--accent-violet)',
+                            borderRadius: '4px', padding: '0.1rem 0.25rem',
+                            cursor: idx === seedOrder.length - 1 ? 'not-allowed' : 'pointer',
+                            opacity: idx === seedOrder.length - 1 ? 0.3 : 1, lineHeight: 1
+                          }}
+                          title="Move down (lower seed)"
+                          aria-label="Move team down in seed order"
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  textAlign: 'center', padding: '1.5rem',
+                  border: '1px dashed var(--border-color)', borderRadius: '8px',
+                  color: 'var(--text-muted)', fontSize: '0.88rem'
+                }}>
+                  {tournament.registeredTeamIds.length < 2
+                    ? 'At least 2 teams must be registered before loading seed scores.'
+                    : 'Click "Load Riot Scores" to fetch team Riot Score data and preview the seed order.'}
+                </div>
+              )}
+            </div>
+
+            {/* Custom order info banner */}
+            {useCustomOrder && seedOrder.length > 0 && (
+              <div style={{
+                padding: '0.6rem 1rem',
+                background: 'hsla(51, 100%, 50%, 0.07)',
+                border: '1px solid hsla(51, 100%, 50%, 0.25)',
+                borderRadius: '6px',
+                marginBottom: '1rem',
+                fontSize: '0.82rem',
+                color: 'var(--accent-gold)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <GripVertical size={14} />
+                Custom seed order is active — bracket will use the order shown above instead of auto Riot Score ranking.
+                <button
+                  onClick={() => { setUseCustomOrder(false); }}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'underline' }}
+                >
+                  Reset to Auto
+                </button>
+              </div>
+            )}
+
+            {/* Generate Bracket button */}
+            {seedOrder.length >= 2 && (
+              <button
+                onClick={handleGenerateWithSeedOrder}
+                className="btn btn-primary"
+                disabled={actionLoading}
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  background: 'linear-gradient(135deg, var(--accent-violet) 0%, hsl(280, 80%, 55%) 100%)',
+                  boxShadow: 'var(--glow-violet)',
+                  fontSize: '0.9rem',
+                  padding: '0.65rem 1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                <Play size={16} />
+                Generate Bracket {useCustomOrder ? '(Custom Seed Order)' : '(Auto Riot Score Seeding)'}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Global Action feedback messages */}
         {(error || success) && (
           <div 
@@ -1464,7 +1832,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
             Tournament Bracket
           </h2>
 
-          {tournament.status === 'Upcoming' ? (
+          {(effectiveStatus === 'Upcoming' && !tournament.bracket?.matches?.length) ? (
             <div style={{ textAlign: 'center', padding: '4rem 1.5rem', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
               <Trophy size={48} style={{ opacity: 0.25, margin: '0 auto 1rem auto' }} />
               <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Bracket Pending Launch</h3>
@@ -1497,6 +1865,7 @@ export default function TournamentDetailClient({ id }: { id: string }) {
               teamsMap={teamsMap}
               userUid={user?.uid}
               team={team}
+              isAdminUser={userIsAdmin}
               actionLoading={actionLoading}
               setActionLoading={setActionLoading}
               setError={setError}

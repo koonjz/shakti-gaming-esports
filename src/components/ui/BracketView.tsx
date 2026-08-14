@@ -13,6 +13,7 @@ interface BracketViewProps {
   teamsMap: Record<string, string>;
   userUid: string | null | undefined;
   team: any; // Logged-in user's team from store
+  isAdminUser?: boolean; // Platform admin (can edit scores even if not organizer)
   actionLoading: boolean;
   setActionLoading: (loading: boolean) => void;
   setError: (err: string | null) => void;
@@ -27,6 +28,7 @@ export default function BracketView({
   teamsMap,
   userUid,
   team,
+  isAdminUser = false,
   actionLoading,
   setActionLoading,
   setError,
@@ -121,7 +123,7 @@ export default function BracketView({
     return () => unsub();
   }, [tournamentId]);
 
-  const isOrganizer = userUid === organizerId;
+  const isOrganizer = userUid === organizerId || isAdminUser;
 
   const handleSaveScore = async (matchId: string) => {
     setError(null);
@@ -217,9 +219,10 @@ export default function BracketView({
   });
 
   const maxRoundInMatches = matches.length > 0 ? Math.max(...matches.map((m) => m.round)) : 0;
+  // FIX: Math.ceil ensures we always get an integer for non-power-of-2 team counts
   const roundsCount = maxRoundInMatches > 0 
     ? maxRoundInMatches 
-    : Math.max(1, Math.ceil(Math.log2(registeredTeamIds.length || maxTeams || 4)));
+    : Math.max(1, Math.ceil(Math.log2(Math.max(registeredTeamIds.length || maxTeams || 4, 2))));
   const roundsArray = Array.from({ length: roundsCount }, (_, i) => i + 1);
 
   if (loading) {

@@ -8,6 +8,7 @@ export interface StatItem {
   label: string;
   value: string;
   color?: string;
+  icon?: string;
 }
 
 export interface StatsTickerProps {
@@ -17,10 +18,12 @@ export interface StatsTickerProps {
 }
 
 const DEFAULT_STATS: StatItem[] = [
-  { label: 'Active Arenas', value: '12+', color: 'var(--accent-cyan)' },
-  { label: 'Prize Pools', value: '$50K+', color: 'var(--accent-violet)' },
-  { label: 'Pro Players', value: '1.4K+', color: 'var(--accent-gold)' },
-  { label: 'Real-time Sync', value: '99.9%', color: 'hsl(145, 80%, 45%)' },
+  { label: 'Active Arenas',  value: '12+',   color: 'var(--accent-cyan)',   icon: '🎮' },
+  { label: 'Prize Pools',    value: '$50K+', color: 'var(--accent-violet)', icon: '🏆' },
+  { label: 'Pro Players',    value: '1.4K+', color: 'var(--accent-gold)',   icon: '⚡' },
+  { label: 'Real-time Sync', value: '99.9%', color: 'var(--accent-green)',  icon: '🔴' },
+  { label: 'Tournaments Run',value: '300+',  color: 'var(--accent-cyan)',   icon: '🎯' },
+  { label: 'Matches Played', value: '8.2K+', color: 'var(--accent-violet)', icon: '🎲' },
 ];
 
 export const StatsTicker: React.FC<StatsTickerProps> = ({
@@ -31,10 +34,9 @@ export const StatsTicker: React.FC<StatsTickerProps> = ({
   const [tickerItems, setTickerItems] = useState<StatItem[]>(stats || DEFAULT_STATS);
 
   useEffect(() => {
-    // Real-time subscription to matchHistory for live feed ticker
     const q = query(
-      collection(db, "matchHistory"),
-      orderBy("resolvedAt", "desc"),
+      collection(db, 'matchHistory'),
+      orderBy('resolvedAt', 'desc'),
       limit(4)
     );
 
@@ -43,41 +45,75 @@ export const StatsTicker: React.FC<StatsTickerProps> = ({
         setTickerItems(stats || DEFAULT_STATS);
         return;
       }
-      
-      const items = snap.docs.map((doc) => {
+      // Keep DEFAULT_STATS-style format when we have match history
+      const matchItems: StatItem[] = snap.docs.map((doc) => {
         const d = doc.data();
-        const tName = d.tournamentName || "Tournament";
         const winner = d.winnerId === d.team1Id ? d.team1Name : d.team2Name;
-        const scoreStr = `${d.score1}-${d.score2}`;
-        const labelStr = `${d.team1Name} vs ${d.team2Name} in ${tName}`;
-        
         return {
-          label: labelStr,
-          value: `🏆 ${winner} (${scoreStr})`,
-          color: 'var(--accent-green)'
+          label: `${d.team1Name} vs ${d.team2Name}`,
+          value: `🏆 ${winner}`,
+          color: 'var(--accent-green)',
+          icon: '🎮',
         };
       });
-      setTickerItems(items);
-    }, (err) => {
-      console.error("StatsTicker match history listener failed, falling back:", err);
+      // Merge with defaults to keep 6+ items for smooth loop
+      setTickerItems([...DEFAULT_STATS.slice(0, 3), ...matchItems]);
+    }, () => {
       setTickerItems(stats || DEFAULT_STATS);
     });
 
     return () => unsub();
   }, [stats]);
 
+  // Duplicate items for seamless infinite loop
+  const loopItems = [...tickerItems, ...tickerItems];
+
   return (
-    <div className={`glass-panel ${className}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem', padding: '1.5rem 2rem', borderRadius: '16px', background: 'hsla(223, 20%, 8%, 0.7)', ...style }}>
-      {tickerItems.map((item, i) => (
-        <div key={i} className="slide-in-right" style={{ animationDelay: `${i * 100}ms` }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color || 'var(--accent-cyan)', fontFamily: 'var(--font-title)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {item.value}
+    <div className={`stats-ticker-outer ${className}`} style={{ ...style }}>
+      {/* LIVE badge — floats over the left fade */}
+      <div className="stats-ticker-live-badge">
+        <span className="live-dot" />
+        LIVE
+      </div>
+
+      <div className="stats-ticker-track" style={{ paddingLeft: '5rem' }}>
+        {loopItems.map((item, i) => (
+          <div key={i} className="stats-ticker-item">
+            {/* Icon bubble */}
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '10px',
+              background: `rgba(${item.color === 'var(--accent-cyan)' ? '0,240,255' : item.color === 'var(--accent-violet)' ? '176,38,255' : item.color === 'var(--accent-gold)' ? '255,215,0' : '0,255,136'}, 0.1)`,
+              border: `1px solid rgba(${item.color === 'var(--accent-cyan)' ? '0,240,255' : item.color === 'var(--accent-violet)' ? '176,38,255' : item.color === 'var(--accent-gold)' ? '255,215,0' : '0,255,136'}, 0.25)`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.2rem',
+              flexShrink: 0,
+            }}>
+              {item.icon}
+            </div>
+
+            <div>
+              <div className="stats-ticker-value stat-number-pop" style={{ color: item.color }}>
+                {item.value}
+              </div>
+              <div className="stats-ticker-label">{item.label}</div>
+            </div>
+
+            {/* Separator dot */}
+            <div style={{
+              width: '5px',
+              height: '5px',
+              borderRadius: '50%',
+              background: 'var(--border-color)',
+              flexShrink: 0,
+              marginLeft: '1.5rem',
+            }} />
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {item.label}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };

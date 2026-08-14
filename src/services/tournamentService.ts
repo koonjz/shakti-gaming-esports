@@ -1,4 +1,4 @@
-import { collection, onSnapshot, doc, query, orderBy, limit, Unsubscribe, writeBatch, getDoc, getDocs, updateDoc, setDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, query, orderBy, limit, Unsubscribe, writeBatch, getDoc, getDocs, updateDoc, setDoc, deleteDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { calculateRiotScore } from '@/lib/riotScoreCalculator';
 import { achievementService } from '@/services/achievementService';
@@ -43,6 +43,7 @@ export interface Tournament {
   estimatedEndTime?: number;
   discordWebhookUrl?: string;
   discordBotEnabled?: boolean;
+  minRiotScore?: number;  // Minimum avg team Riot Score required to register
   bracket?: {
     matches: any[];
   };
@@ -155,42 +156,140 @@ export const tournamentService = {
 
   /**
    * Generates single-elimination brackets and creates match documents in the subcollection.
-   * Seeds teams based on player win history and rating, assigning BYEs to top seeds if team count is odd.
+   * Seeds teams based on AVERAGE RIOT SCORE of team members, assigning BYEs to top seeds if team count is odd.
+   * Riot Score = 1000 (base) + tier points + rank sub-division points + LP + (level × 5) + (wins × 10)
    */
   async generateBracket(tournamentId: string, teamIds: string[]): Promise<void> {
+    return this._generateBracketInternal(tournamentId, teamIds, null);
+  },
+
+  /**
+   * Generates bracket with a manually specified seed order (admin override).
+   * orderedTeamIds[0] = #1 Seed, orderedTeamIds[1] = #2 Seed, etc.
+   */
+  async regenerateBracketWithCustomOrder(tournamentId: string, orderedTeamIds: string[]): Promise<void> {
+    return this._generateBracketInternal(tournamentId, orderedTeamIds, orderedTeamIds);
+  },
+
+  /**
+   * Resets the bracket: deletes all match subcollection docs, clears bracket.matches,
+   * and resets the tournament status back to 'Upcoming'.
+   */
+  async resetBracket(tournamentId: string): Promise<void> {
+    const tRef = doc(db, "tournaments", tournamentId);
+    // Delete all match documents in subcollection
+    try {
+      const matchesRef = collection(db, "tournaments", tournamentId, "matches");
+      const matchesSnap = await getDocs(matchesRef);
+      const batch = writeBatch(db);
+      matchesSnap.docs.forEach(d => batch.delete(d.ref));
+      // Reset tournament document
+      batch.update(tRef, {
+        status: 'Upcoming',
+        'bracket.matches': []
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Failed to reset bracket:", err);
+      throw err;
+    }
+  },
+
+  /**
+   * Computes the average Riot Score for a team based on all member profiles.
+   * Uses calculateRiotScore(summonerLevel, tier, rank, lp, wins) per member.
+   */
+  async _computeTeamAvgRiotScore(teamId: string): Promise<number> {
+    try {
+      const teamDoc = await getDoc(doc(db, "teams", teamId));
+      if (!teamDoc.exists()) return 0;
+      const members: string[] = teamDoc.data().members || [];
+      if (members.length === 0) return 0;
+
+      let totalScore = 0;
+      let memberCount = 0;
+      for (const mUid of members) {
+        const pDoc = await getDoc(doc(db, "profiles", mUid));
+        if (pDoc.exists()) {
+          const pData = pDoc.data();
+          const summonerLevel: number = pData.riotStats?.summonerLevel || 30;
+          const rankInfo = pData.riotStats?.rankInfo || {};
+          const tier: string = rankInfo.tier || 'UNRANKED';
+          const rank: string = rankInfo.rank || '';
+          const lp: number = rankInfo.leaguePoints || 0;
+          const wins: number = pData.stats?.wins || 0;
+          totalScore += calculateRiotScore(summonerLevel, tier, rank, lp, wins);
+          memberCount++;
+        }
+      }
+      return memberCount > 0 ? Math.round(totalScore / memberCount) : 0;
+    } catch (err) {
+      console.error(`Error computing avg Riot Score for team ${teamId}:`, err);
+      return 0;
+    }
+  },
+
+  /**
+   * Internal bracket generation — used by generateBracket and regenerateBracketWithCustomOrder.
+   * If customOrderedTeamIds is provided, those are used directly (admin manual seed order).
+   * Otherwise, teams are auto-sorted by descending average Riot Score.
+   */
+  async _generateBracketInternal(tournamentId: string, teamIds: string[], customOrderedTeamIds: string[] | null): Promise<void> {
     const tRef = doc(db, "tournaments", tournamentId);
     const tSnap = await getDoc(tRef);
     if (!tSnap.exists()) throw new Error("Tournament not found");
     const tData = tSnap.data() as Tournament;
 
     const numTeams = teamIds.length;
-    if (numTeams < 2) throw new Error("At least 2 teams are required to generate brackets.");
+    if (numTeams < 1) throw new Error("At least 1 team is required to generate brackets.");
 
-    // Skill-based seeding: Fetch team player histories to sort teamIds by total member rating
-    const teamScores: Array<{ id: string; score: number }> = [];
-    for (const tId of teamIds) {
-      let score = 0;
-      try {
-        const teamDoc = await getDoc(doc(db, "teams", tId));
-        if (teamDoc.exists()) {
-          const members: string[] = teamDoc.data().members || [];
-          for (const mUid of members) {
-            const pDoc = await getDoc(doc(db, "profiles", mUid));
-            if (pDoc.exists()) {
-              const pData = pDoc.data();
-              score += (pData.stats?.wins || 0) * 10 + (pData.stats?.points || 0);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error computing team skill rating for seeding:", err);
-      }
-      teamScores.push({ id: tId, score });
+    // ── Special case: only 1 team registered → auto-winner ──────────
+    if (numTeams === 1) {
+      const winnerId = teamIds[0];
+      const autoMatchId = 'm-1-1';
+      const autoMatch = {
+        id: autoMatchId,
+        tournamentId,
+        round: 1,
+        matchNumber: 1,
+        team1Id: winnerId,
+        team2Id: null,
+        score1: 1,
+        score2: 0,
+        status: 'completed',
+        winnerId,
+        updatedAt: Date.now(),
+        checkIn: null,
+        discordUrl: null,
+        roomId: null,
+        roomPassword: null,
+      };
+      const batch = writeBatch(db);
+      const matchDocRef = doc(db, "tournaments", tournamentId, "matches", autoMatchId);
+      batch.set(matchDocRef, autoMatch);
+      batch.update(tRef, {
+        status: 'Completed',
+        winnerId,
+        'bracket.matches': [autoMatch],
+      });
+      await batch.commit();
+      return;
     }
 
-    // Sort teams by skill rating descending (#1 Seed gets highest score)
+
+
+    // Riot Score-based seeding: Fetch avg Riot Score for each team
+    const teamScores: Array<{ id: string; score: number }> = [];
+    for (const tId of teamIds) {
+      const score = await this._computeTeamAvgRiotScore(tId);
+      teamScores.push({ id: tId, score });
+    }
+    console.log('[BracketGen] Team Riot Score seeding:', teamScores.map(t => `${t.id}: ${t.score}`).join(', '));
+
+    // Sort teams by avg Riot Score descending (#1 Seed = highest score)
     teamScores.sort((a, b) => b.score - a.score);
-    const sortedTeamIds = teamScores.map(ts => ts.id);
+    // If admin provided a custom order, use that instead of auto-sort
+    const sortedTeamIds = customOrderedTeamIds ?? teamScores.map(ts => ts.id);
 
     // Smallest power of 2 bracket size (e.g. 3 teams -> 4 slots, 5 teams -> 8 slots)
     const totalRounds = Math.max(1, Math.ceil(Math.log2(numTeams)));

@@ -47,6 +47,7 @@ export default function CreateTournamentClient() {
   const [maxTeams,          setMaxTeams]          = useState<number>(4);
   const [startDateStr,      setStartDateStr]      = useState<string>(getDefaultStartDateStr());
   const [roundDurationMins, setRoundDurationMins] = useState<number>(45);
+  const [minRiotScore,      setMinRiotScore]      = useState<number>(0);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [error,         setError]         = useState<string | null>(null);
@@ -164,6 +165,7 @@ export default function CreateTournamentClient() {
         status:            'Upcoming',
         organizerId:       user!.uid,
         registeredTeamIds: [],
+        minRiotScore:      Number(minRiotScore) || 0,
         createdAt:         serverTimestamp(),
       });
 
@@ -370,6 +372,32 @@ export default function CreateTournamentClient() {
               <option value="Free">Free to Join</option>
               <option value="Paid">Paid Entry (Ticket/Pass Required)</option>
             </select>
+          </div>
+
+          {/* Minimum Riot Score (Admin only) */}
+          <div className="form-group">
+            <label htmlFor="create-tourney-minriot" className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Trophy size={16} style={{ color: 'var(--accent-gold)' }} />
+              Minimum Riot Score Requirement
+            </label>
+            <div className="input-glow-wrapper">
+              <input
+                id="create-tourney-minriot"
+                type="number"
+                min={0}
+                step={100}
+                className="glass-input"
+                value={minRiotScore}
+                onChange={(e) => setMinRiotScore(Math.max(0, Number(e.target.value)))}
+                disabled={actionLoading}
+                placeholder="0"
+              />
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block', lineHeight: 1.4 }}>
+              Teams with an average Riot Score below this threshold cannot register. Set to <strong>0</strong> for no restriction.
+              <br />
+              <span style={{ color: 'var(--accent-gold)' }}>Typical scores: Unranked ~1,000 · Silver ~1,200 · Platinum ~1,600 · Diamond ~2,000+</span>
+            </span>
           </div>
 
           {/* Schedule Summary Preview */}

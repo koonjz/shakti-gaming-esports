@@ -1,30 +1,37 @@
-'use client';
+﻿'use client';
 
-import React from 'react';
+import React, { forwardRef } from 'react';
 
-export interface GlassCardProps {
-  children: React.ReactNode;
-  variant?: 'panel' | 'card';
+export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: 'card' | 'panel';
   hoverable?: boolean;
   className?: string;
-  style?: React.CSSProperties;
+  children?: React.ReactNode;
 }
 
-export const GlassCard: React.FC<GlassCardProps> = ({
-  children,
-  variant = 'card',
-  hoverable = true,
-  className = '',
-  style = {}
-}) => {
-  const baseClass = variant === 'panel' ? 'glass-panel' : 'glass-card';
-  const hoverClass = hoverable ? 'card-hover' : '';
+export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
+  (
+    {
+      variant = 'card',
+      hoverable = false,
+      className = '',
+      children,
+      ...props
+    },
+    ref
+  ) => {
+    const baseClass = variant === 'panel' ? 'glass-panel' : 'glass-card';
+    const hoverClass = hoverable ? 'card-hover' : '';
+    const combinedClassName = [baseClass, hoverClass, className].filter(Boolean).join(' ');
 
-  return (
-    <article className={`${baseClass} ${hoverClass} ${className}`} style={style}>
-      {children}
-    </article>
-  );
-};
+    return (
+      <div ref={ref} className={combinedClassName} {...props}>
+        {children}
+      </div>
+    );
+  }
+);
+
+GlassCard.displayName = 'GlassCard';
 
 export default GlassCard;

@@ -1,6 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
+  --bg-base: hsl(222, 47%, 4%);
+  --bg-card: rgba(7, 10, 20, 0.80);
+  --border-color: rgba(0, 240, 255, 0.16);
+  --accent-cyan: #00f0ff;
+  --accent-violet: #8b5cf6;
+  --glow-cyan: 0 0 20px rgba(0, 240, 255, 0.25);
+  --glow-violet: 0 0 24px rgba(139, 92, 246, 0.30);
   /* ── NEON ESPORTS (Default) ── Dark base, electric cyan + purple */
   --bg-primary: #040914;
   --bg-secondary: #0a1024;
@@ -282,7 +289,13 @@ html {
 html, body {
   width: 100%;
   min-height: 100vh;
-  background-color: var(--bg-primary);
+  background-color: var(--bg-base);
+  background-image: 
+    radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.16) 0%, transparent 40%),
+    radial-gradient(circle at 88% 25%, rgba(0, 240, 255, 0.14) 0%, transparent 42%),
+    radial-gradient(circle at 50% 85%, rgba(139, 92, 246, 0.12) 0%, transparent 45%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -1262,3 +1275,203 @@ h3 {
 }
 
 
+
+
+/* ==========================================================================
+   GLASSMORPHISM DESIGN SYSTEM (Dark Neon-Cyan & Violet Spec)
+   ========================================================================== */
+
+/* .glass-panel: large containers, stats tables, filter bars, modals */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="neon"] .glass-panel {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* .glass-card: item cards, team rosters, tournament brackets */
+.glass-card {
+  background: hsla(220, 40%, 8%, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+[data-theme="neon"] .glass-card {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.card-hover:hover,
+.glass-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--glow-violet), 0 12px 32px rgba(0, 0, 0, 0.45);
+  border-color: rgba(0, 240, 255, 0.45);
+}
+
+/* .glass-input: form inputs and search boxes */
+.glass-input {
+  background: hsla(223, 20%, 6%, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.18), var(--glow-cyan);
+}
+
+/* .glass-select: filter dropdowns */
+.glass-select {
+  background-color: hsla(223, 20%, 6%, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  color: #ffffff;
+  padding: 10px 38px 10px 14px;
+  border-radius: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(0, 240, 255, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-select:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.18), var(--glow-cyan);
+}
+
+.glass-select option {
+  background-color: hsl(222, 45%, 8%);
+  color: #ffffff;
+}
+
+/* .header-glass: sticky or fixed headers */
+.header-glass {
+  background: hsla(222, 45%, 6%, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Navbar fixed container */
+.navbar-glass {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(4, 9, 20, 0.75);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Navbar dropdown menu */
+.zentry-dropdown-menu {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(6, 12, 26, 0.95);
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 0 20px rgba(139, 92, 246, 0.15), 0 16px 40px rgba(0, 0, 0, 0.6);
+  border-radius: 14px;
+}
+
+/* Floating chat widget panel */
+.chat-widget-glass {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(5, 9, 22, 0.92);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), var(--glow-cyan);
+  border-radius: 20px;
+}
+
+/* Modals backdrop */
+.modal-backdrop-glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(3, 6, 15, 0.75);
+}
+
+/* Pills and badges */
+.zentry-role-badge,
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 240, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #e0faff;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+
+/* Bracket match cards and chart tooltips */
+.bracket-match-card,
+.chart-tooltip-glass {
+  background: rgba(8, 14, 28, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+/* Fallback for browsers without backdrop-filter support */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-panel,
+  .glass-card,
+  .glass-input,
+  .glass-select,
+  .header-glass,
+  .navbar-glass,
+  .zentry-dropdown-menu,
+  .chat-widget-glass,
+  .zentry-role-badge,
+  .hero-pill,
+  .bracket-match-card,
+  .chart-tooltip-glass {
+    background-color: hsl(222, 45%, 8%) !important;
+  }
+  .modal-backdrop-glass {
+    background-color: rgba(3, 6, 15, 0.96) !important;
+  }
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .glass-card,
+  .card-hover,
+  .glass-card:hover,
+  .card-hover:hover {
+    transform: none !important;
+    transition: none !important;
+  }
+}

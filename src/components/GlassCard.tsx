@@ -13,7 +13,7 @@ export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
   (
     {
       variant = 'card',
-      hoverable = false,
+      hoverable = true,
       className = '',
       children,
       ...props

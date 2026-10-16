@@ -50,7 +50,7 @@ function TournamentCardItem({ tournament }: { tournament: Tournament }) {
   const effectiveStatus = useEffectiveTournamentStatus(tournament);
 
   return (
-    <GlassCard style={{ display: 'flex', flexDirection: 'column' }}>
+    <GlassCard variant="card" hoverable={true} style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         {getStatusBadge(effectiveStatus)}
         <Badge variant={tournament.entryType === 'Free' ? 'cyan' : 'gold'}>
@@ -173,7 +173,7 @@ export default function TournamentsView() {
         </div>
 
         {/* Filter Controls */}
-        <GlassCard style={{ marginBottom: '2rem', padding: '1.25rem' }}>
+        <GlassCard variant="panel" style={{ marginBottom: '2rem', padding: '1.25rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', alignItems: 'center' }}>
             
             {/* Search Input */}

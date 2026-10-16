@@ -76,7 +76,13 @@
 }
 
 [data-theme="neon"] body {
-  background-color: #02040a;
+  background-color: var(--bg-base);
+  background-image: 
+    radial-gradient(circle at 12% 18%, rgba(139, 92, 246, 0.20) 0%, transparent 40%),
+    radial-gradient(circle at 88% 25%, rgba(0, 240, 255, 0.18) 0%, transparent 42%),
+    radial-gradient(circle at 50% 85%, rgba(139, 92, 246, 0.16) 0%, transparent 45%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: #EDF4FF;
   transition: background-color 0.4s ease, color 0.3s ease;
 }
@@ -1021,6 +1027,8 @@ h3 {
 .podium-card {
   position: relative;
   background: hsla(223, 20%, 10%, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: 16px;
   border: 1px solid var(--border-color);
   padding: 1.75rem 1.25rem;
@@ -1194,6 +1202,8 @@ h3 {
 .bento-card {
   position: relative;
   background: hsla(225, 24%, 9%, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-radius: 20px;
   border: 1px solid var(--border-color);
   padding: 2.25rem;
